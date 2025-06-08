@@ -99,8 +99,14 @@ HTML_TEMPLATE = """
             text-align: center;
             margin: 20px 0;
         }
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
     <script>
+        let isRunning = false;
+
         function updateLogs() {
             fetch('/logs')
                 .then(response => response.json())
@@ -121,15 +127,44 @@ HTML_TEMPLATE = """
             fetch('/status')
                 .then(response => response.json())
                 .then(data => {
+                    isRunning = data.running;
                     const statusDiv = document.getElementById('status');
-                    statusDiv.className = `status ${data.running ? 'running' : 'stopped'}`;
-                    statusDiv.textContent = data.running ? 'Checker is running' : 'Checker is stopped';
+                    const startButton = document.getElementById('startButton');
+                    const stopButton = document.getElementById('stopButton');
+
+                    statusDiv.className = `status ${isRunning ? 'running' : 'stopped'}`;
+                    statusDiv.textContent = isRunning ? 'Checker is running' : 'Checker is stopped';
+
+                    startButton.disabled = isRunning;
+                    stopButton.disabled = !isRunning;
                 });
         }
 
+        function startChecker() {
+            if (!isRunning) {
+                fetch('/start', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        updateStatus();
+                    });
+            }
+        }
+
+        function stopChecker() {
+            if (isRunning) {
+                fetch('/stop', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        updateStatus();
+                    });
+            }
+        }
+
+        // Update logs and status every 5 seconds
         setInterval(updateLogs, 5000);
         setInterval(updateStatus, 5000);
 
+        // Initial update when page loads
         window.onload = function() {
             updateLogs();
             updateStatus();
@@ -141,8 +176,8 @@ HTML_TEMPLATE = """
         <h1>BLS Appointment Checker</h1>
         <div id="status" class="status">Checking status...</div>
         <div class="controls">
-            <a href="/start" class="button start-button">Start Checker</a>
-            <a href="/stop" class="button stop-button">Stop Checker</a>
+            <button id="startButton" onclick="startChecker()" class="button start-button">Start Checker</button>
+            <button id="stopButton" onclick="stopChecker()" class="button stop-button">Stop Checker</button>
         </div>
         <div id="logs" class="log-container">
             Loading logs...
@@ -172,7 +207,7 @@ def get_logs():
 def get_status():
     return jsonify({'running': is_running})
 
-@app.route('/start')
+@app.route('/start', methods=['POST'])
 def start_checker():
     global checker_thread, is_running
     if not is_running:
@@ -181,7 +216,7 @@ def start_checker():
         checker_thread.start()
     return jsonify({'status': 'started'})
 
-@app.route('/stop')
+@app.route('/stop', methods=['POST'])
 def stop_checker():
     global is_running
     is_running = False
